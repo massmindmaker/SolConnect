@@ -10,17 +10,17 @@ import {
   sendAndConfirmTransaction 
 } from '@solana/web3.js';
 import { Button } from '@/components/ui/button';
-import { isValidSolanaAddress, solToLamports } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { isValidSolanaAddress, solToLamports, formatSol } from '@/lib/utils';
+import { useToast } from '@/components/ui/toast';
 
 export const SolanaTransfer: FC = () => {
   const { publicKey, sendTransaction } = useWallet();
+  const { addToast } = useToast();
   const [recipient, setRecipient] = useState(process.env.NEXT_PUBLIC_RECIPIENT_WALLET || '');
   const [amount, setAmount] = useState('0.01');
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<{
-    type: 'success' | 'error' | 'info' | null;
-    message: string;
-  }>({ type: null, message: '' });
 
   // Валидация получателя
   const isRecipientValid = isValidSolanaAddress(recipient);
@@ -34,11 +34,15 @@ export const SolanaTransfer: FC = () => {
 
     try {
       setLoading(true);
-      setStatus({ type: 'info', message: 'Подготовка транзакции...' });
+      addToast({ 
+        title: 'Подготовка транзакции', 
+        description: 'Пожалуйста, подождите...', 
+        type: 'default' 
+      });
 
       // Создаем соединение с Solana
       const connection = new Connection(
-        process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com',
+        process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
         'confirmed'
       );
 
@@ -60,20 +64,30 @@ export const SolanaTransfer: FC = () => {
       const signature = await sendTransaction(transaction, connection);
       
       // Ожидаем подтверждение
-      setStatus({ type: 'info', message: 'Ожидание подтверждения транзакции...' });
+      addToast({ 
+        title: 'Ожидание подтверждения', 
+        description: 'Транзакция отправлена в сеть Solana', 
+        type: 'default' 
+      });
+      
       await connection.confirmTransaction(signature, 'confirmed');
       
       // Успешное подтверждение
-      setStatus({ 
-        type: 'success', 
-        message: `Перевод выполнен успешно! Сигнатура: ${signature.substring(0, 8)}...` 
+      addToast({ 
+        title: 'Перевод выполнен успешно!', 
+        description: `Отправлено ${amount} SOL. Подтверждено в блокчейне.`, 
+        type: 'success' 
       });
+      
+      // Сбросить поля формы после успешной отправки
+      setAmount('0.01');
       
     } catch (error) {
       console.error('Error processing transfer:', error);
-      setStatus({ 
-        type: 'error', 
-        message: `Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}` 
+      addToast({ 
+        title: 'Ошибка перевода', 
+        description: error instanceof Error ? error.message : 'Неизвестная ошибка', 
+        type: 'error' 
       });
     } finally {
       setLoading(false);
@@ -81,54 +95,58 @@ export const SolanaTransfer: FC = () => {
   };
 
   return (
-    <div className="flex flex-col w-full gap-4 mt-4">
-      <div className="form-group">
-        <label className="block text-sm font-medium mb-1">Получатель:</label>
-        <input
-          type="text"
-          value={recipient}
-          onChange={(e) => setRecipient(e.target.value)}
-          className="w-full p-2 rounded border focus:ring-2 focus:ring-primary"
-          placeholder="Solana адрес получателя"
-        />
-        {recipient && !isRecipientValid && (
-          <p className="text-destructive text-xs mt-1">Некорректный адрес кошелька Solana</p>
-        )}
-      </div>
-
-      <div className="form-group">
-        <label className="block text-sm font-medium mb-1">Сумма (SOL):</label>
-        <input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          min="0.000001"
-          step="0.001"
-          className="w-full p-2 rounded border focus:ring-2 focus:ring-primary"
-          placeholder="0.01"
-        />
-        {amount && !isAmountValid && (
-          <p className="text-destructive text-xs mt-1">Сумма должна быть больше 0</p>
-        )}
-      </div>
-
-      <Button
-        onClick={handleTransfer}
-        disabled={loading || !isRecipientValid || !isAmountValid}
-        className="w-full"
-      >
-        {loading ? 'Отправка...' : 'Отправить SOL'}
-      </Button>
-
-      {status.type && (
-        <div className={`mt-4 p-3 rounded ${
-          status.type === 'success' ? 'bg-green-100 text-green-800' : 
-          status.type === 'error' ? 'bg-red-100 text-red-800' : 
-          'bg-blue-100 text-blue-800'
-        }`}>
-          {status.message}
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle>Перевод SOL</CardTitle>
+        <CardDescription>
+          Отправьте SOL на любой адрес в сети Solana
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Получатель:</label>
+          <Input
+            type="text"
+            value={recipient}
+            onChange={(e) => setRecipient(e.target.value)}
+            placeholder="Solana адрес получателя"
+          />
+          {recipient && !isRecipientValid && (
+            <p className="text-destructive text-xs">Некорректный адрес кошелька Solana</p>
+          )}
         </div>
-      )}
-    </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Сумма (SOL):</label>
+          <Input
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            min="0.000001"
+            step="0.001"
+            placeholder="0.01"
+          />
+          {amount && !isAmountValid && (
+            <p className="text-destructive text-xs">Сумма должна быть больше 0</p>
+          )}
+        </div>
+
+        {publicKey && (
+          <p className="text-xs text-muted-foreground">
+            Доступно: ~{formatSol(0)} SOL (информация может быть неточной)
+          </p>
+        )}
+      </CardContent>
+      <CardFooter>
+        <Button
+          onClick={handleTransfer}
+          disabled={loading || !isRecipientValid || !isAmountValid}
+          className="w-full"
+          variant="solana"
+        >
+          {loading ? 'Отправка...' : 'Отправить SOL'}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 };
