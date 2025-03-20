@@ -3,32 +3,41 @@
 import { FC, useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection } from '@solana/web3.js';
 import { Button } from '@/components/ui/button';
-import { formatWalletAddress, lamportsToSol } from '@/lib/utils';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { CopyAddress } from '@/components/copy-address';
+import { useToast } from '@/components/ui/toast';
+import { formatSol, getWalletBalance } from '@/lib/utils';
 
 export const SolanaWalletConnect: FC = () => {
   const { publicKey, connected, disconnect } = useWallet();
+  const { addToast } = useToast();
   const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   // Получаем баланс кошелька при подключении
   useEffect(() => {
-    const getBalance = async () => {
+    const fetchBalance = async () => {
       if (publicKey && connected) {
         try {
           setLoading(true);
           // Используем общедоступный RPC URL для Solana
           const connection = new Connection(
-            process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com',
+            process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
             'confirmed'
           );
           
-          const balance = await connection.getBalance(publicKey);
-          setBalance(lamportsToSol(balance));
+          const balanceInSol = await getWalletBalance(connection, publicKey.toString());
+          setBalance(balanceInSol);
         } catch (error) {
           console.error('Error fetching balance:', error);
           setBalance(null);
+          addToast({
+            title: 'Ошибка',
+            description: 'Не удалось получить баланс кошелька',
+            type: 'error'
+          });
         } finally {
           setLoading(false);
         }
@@ -37,16 +46,26 @@ export const SolanaWalletConnect: FC = () => {
       }
     };
 
-    getBalance();
-  }, [publicKey, connected]);
+    fetchBalance();
+  }, [publicKey, connected, addToast]);
 
   // Обработчик отключения кошелька
   const handleDisconnect = async () => {
     try {
       await disconnect();
       setBalance(null);
+      addToast({
+        title: 'Кошелек отключен',
+        description: 'Вы успешно отключили кошелек Solana',
+        type: 'success'
+      });
     } catch (error) {
       console.error('Error disconnecting wallet:', error);
+      addToast({
+        title: 'Ошибка',
+        description: 'Не удалось отключить кошелек',
+        type: 'error'
+      });
     }
   };
 
@@ -59,36 +78,44 @@ export const SolanaWalletConnect: FC = () => {
         </div>
       ) : (
         // Если подключен - показываем информацию о кошельке
-        <div className="wallet-info w-full p-4 border rounded-lg bg-card">
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Адрес:</span>
-              <span className="text-sm font-mono">
-                {publicKey ? formatWalletAddress(publicKey.toString()) : '-'}
-              </span>
+        <Card className="w-full">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xl">Подключенный кошелек</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex flex-col space-y-1">
+                <span className="text-sm font-medium text-muted-foreground">Адрес кошелька</span>
+                <CopyAddress 
+                  address={publicKey.toString()} 
+                  className="bg-muted py-1.5 px-2 rounded-md"
+                />
+              </div>
+              
+              <div className="flex flex-col space-y-1">
+                <span className="text-sm font-medium text-muted-foreground">Баланс</span>
+                <div className="flex items-center bg-muted py-1.5 px-3 rounded-md">
+                  {loading ? (
+                    <span className="text-sm">Загрузка...</span>
+                  ) : balance !== null ? (
+                    <span className="text-sm font-medium">{formatSol(balance)} SOL</span>
+                  ) : (
+                    <span className="text-sm">Невозможно получить баланс</span>
+                  )}
+                </div>
+              </div>
             </div>
-            
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Баланс:</span>
-              <span className="text-sm">
-                {loading 
-                  ? 'Загрузка...' 
-                  : balance !== null 
-                    ? `${balance.toFixed(5)} SOL` 
-                    : '-'
-                }
-              </span>
-            </div>
-            
+          </CardContent>
+          <CardFooter>
             <Button 
               variant="destructive" 
-              className="mt-2" 
+              className="w-full" 
               onClick={handleDisconnect}
             >
               Отключить кошелек
             </Button>
-          </div>
-        </div>
+          </CardFooter>
+        </Card>
       )}
     </div>
   );
